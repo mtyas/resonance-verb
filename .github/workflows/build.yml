@@ -83,7 +83,10 @@ jobs:
         run: |
           curl -sL -o cv.zip https://github.com/free-audio/clap-validator/releases/download/0.4.1/clap-validator-0.4.1-127-g152b982-ubuntu-22.04.zip
           mkdir cv && unzip -q cv.zip -d cv
-          CV=$(find cv -type f -name clap-validator | head -1); chmod +x "$CV"
+          for t in cv/*.tar.gz; do tar -xzf "$t" -C cv; done      # the zip wraps a tarball
+          CV=$(find cv -type f -name clap-validator | head -1)
+          [ -n "$CV" ] || { echo "clap-validator binary not found in archive"; find cv; exit 1; }
+          chmod +x "$CV"
           xvfb-run -a "$CV" validate "build/ResonanceVerb_artefacts/Release/CLAP/Resonance Verb.clap"
 
       - name: Ad-hoc sign macOS bundles
