@@ -24,6 +24,8 @@ namespace
 {
 const void* hostGetExtension (const clap_host_t*, const char*) { return nullptr; }
 void hostNoop (const clap_host_t*) {}
+bool callbackRequested = false;
+void hostRequestCallback (const clap_host_t*) { callbackRequested = true; }
 
 clap_host_t makeHost()
 {
@@ -36,7 +38,7 @@ clap_host_t makeHost()
     h.get_extension = hostGetExtension;
     h.request_restart = hostNoop;
     h.request_process = hostNoop;
-    h.request_callback = hostNoop;
+    h.request_callback = hostRequestCallback;   // serviced by pollCallbacks(), like clap-validator
     return h;
 }
 
@@ -88,6 +90,16 @@ struct Instance
         state = static_cast<const clap_plugin_state_t*> (plugin->get_extension (plugin, CLAP_EXT_STATE));
     }
     ~Instance() { plugin->destroy (plugin); }
+
+    /** Like clap-validator's poll_callback: run on_main_thread() while the plugin keeps asking. */
+    void pollCallbacks()
+    {
+        for (int i = 0; i < 10 && callbackRequested; ++i)
+        {
+            callbackRequested = false;
+            plugin->on_main_thread (plugin);
+        }
+    }
 
     std::vector<double> values() const
     {
@@ -218,7 +230,9 @@ int main (int argc, char** argv)
                 e.value = v;
                 ev.events.push_back (e);
             }
+            a.pollCallbacks();
             if (mode.viaFlush) a.flushWith (ev); else a.processWith (ev);
+            a.pollCallbacks();
             expected = a.values();
             clap_ostream_t os { &saved, MemStream::write };
             if (! a.state->save (a.plugin, &os)) { std::puts ("save failed"); return 1; }
@@ -229,7 +243,9 @@ int main (int argc, char** argv)
             Instance b (factory, &host, desc->id);
             saved.chunk = chunk;
             clap_istream_t is { &saved, MemStream::read };
+            b.pollCallbacks();
             if (! b.state->load (b.plugin, &is)) { std::puts ("load failed"); return 1; }
+            b.pollCallbacks();
             got = b.values();
             clap_ostream_t os { &resaved, MemStream::write };
             b.state->save (b.plugin, &os);
