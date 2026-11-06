@@ -113,6 +113,7 @@ private:
     bool pendingRestore = false;
     juce::String pendingPresetKey;
     int pendingProgram = -1;
+    juce::String savedPresetKey;   // current preset key as last seen on the message thread (guarded by pendingLock)
 
     // MIDI learn: CC number -> parameter index (-1 = unmapped). Written by the audio thread
     // when learning, read by both; all atomics, no locks.

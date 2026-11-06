@@ -179,6 +179,7 @@ ResonanceVerbProcessor::ResonanceVerbProcessor()
         applyValuesWithUndo (name, v);
     });
     recallDefaultMidiMap();
+    savedPresetKey = presetManager->getCurrent().getKey();
 }
 
 ResonanceVerbProcessor::~ResonanceVerbProcessor()
@@ -549,14 +550,37 @@ void ResonanceVerbProcessor::getStateInformation (juce::MemoryBlock& dest)
 {
     juce::XmlElement root ("ResonanceVerbState");
     root.setAttribute ("version", 2);
-    if (auto params = apvts.copyState().createXml())
+
+    // Some wrappers (e.g. CLAP during processing) set parameter values without notifying
+    // listeners, which leaves the APVTS tree stale. Write the live value wherever the tree
+    // disagrees with it; where they agree, keep the tree's exact value so re-saving a loaded
+    // state is byte-identical.
+    auto state = apvts.copyState();
+    for (auto* p : parameterList)
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            auto child = state.getChildWithProperty ("id", r->getParameterID());
+            if (! child.isValid()) continue;
+            const float stored = (float) child.getProperty ("value", r->convertFrom0to1 (r->getDefaultValue()));
+            if (std::abs (r->convertTo0to1 (stored) - r->getValue()) > 1.0e-5f)
+                child.setProperty ("value", r->convertFrom0to1 (r->getValue()), nullptr);
+        }
+    if (auto params = state.createXml())
         root.addChildElement (params.release());
+
     auto* midiMap = root.createNewChildElement ("MIDIMAP");
     midiMap->setAttribute ("map", midiMapToString());
+
+    // Always written (deterministic output whichever thread the host saves from).
     if (juce::MessageManager::existsAndIsCurrentThread())
     {
-        auto* preset = root.createNewChildElement ("PRESET");
-        preset->setAttribute ("key", presetManager->getCurrent().getKey());
+        const juce::SpinLock::ScopedLockType lock (pendingLock);
+        savedPresetKey = presetManager->getCurrent().getKey();
+    }
+    auto* preset = root.createNewChildElement ("PRESET");
+    {
+        const juce::SpinLock::ScopedLockType lock (pendingLock);
+        preset->setAttribute ("key", savedPresetKey);
     }
     copyXmlToBinary (root, dest);
 }
@@ -581,6 +605,7 @@ void ResonanceVerbProcessor::setStateInformation (const void* data, int size)
         const juce::SpinLock::ScopedLockType lock (pendingLock);
         pendingRestore = true;
         pendingPresetKey = presetKey;
+        if (presetKey.isNotEmpty()) savedPresetKey = presetKey;
     }
     if (juce::MessageManager::existsAndIsCurrentThread()) handleAsyncUpdate();
     else triggerAsyncUpdate();

@@ -193,6 +193,28 @@ int main()
                restored.getPresetManager().getCurrent().name);
         check (! restored.getUndoManager().canUndo(), "Restored session starts with a clean undo history");
 
+        // CLAP hosts set values during processing without notifying parameter listeners;
+        // the saved state must still contain them, and re-saving must be byte-identical.
+        {
+            ResonanceVerbProcessor a;
+            isolate (a, dir);
+            juce::Random rng (7);
+            std::vector<float> set;
+            for (auto* prm : a.getParameters()) { const float v = rng.nextFloat(); prm->setValue (v); set.push_back (prm->getValue()); }
+            juce::MemoryBlock sa;
+            a.getStateInformation (sa);
+            ResonanceVerbProcessor b;
+            isolate (b, dir);
+            b.setStateInformation (sa.getData(), (int) sa.getSize());
+            int wrong = 0;
+            for (int i = 0; i < b.getParameters().size(); ++i)
+                wrong += std::abs (b.getParameters()[i]->getValue() - set[(size_t) i]) > 1e-3f ? 1 : 0;
+            juce::MemoryBlock sb;
+            b.getStateInformation (sb);
+            check (wrong == 0, "Values set without notification are saved (CLAP)", juce::String (wrong) + " parameters wrong after reload");
+            check (sa == sb, "Re-saving a loaded state is byte-identical", juce::String ((int) sa.getSize()) + " vs " + juce::String ((int) sb.getSize()) + " bytes");
+        }
+
         // version-1 sessions (bare parameter tree) still load
         ResonanceVerbProcessor legacy;
         isolate (legacy, dir);
