@@ -1,0 +1,20 @@
+# Build output
+build/
+build-*/
+out/
+cmake-build-*/
+_deps/
+
+# IDE / OS
+.vscode/
+.idea/
+*.xcodeproj/
+*.user
+.DS_Store
+Thumbs.db
+
+# Generated audio / plot data (regenerate with rv_render)
+*.wav
+*.raw
+docs/tools/data/
+__pycache__/

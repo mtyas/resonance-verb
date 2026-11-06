@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" height="420" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c8a15a"/>
+    </marker>
+  </defs>
+  <rect width="1000" height="420" rx="14" fill="#15120f"/>
+  <text x="32" y="40" fill="#efe6d4" font-size="20" font-weight="700">Signal flow</text>
+  <text x="32" y="62" fill="#9c8f7a" font-size="13">Zero latency end to end; every stage runs sample by sample</text>
+
+  <!-- inputs -->
+  <g font-size="13">
+    <rect x="32" y="110" width="120" height="48" rx="8" fill="#201b16" stroke="#3a3128"/>
+    <text x="92" y="139" fill="#efe6d4" text-anchor="middle" font-weight="600">Audio in</text>
+    <rect x="32" y="176" width="120" height="48" rx="8" fill="#201b16" stroke="#3a3128"/>
+    <text x="92" y="198" fill="#efe6d4" text-anchor="middle" font-weight="600">Sidechain</text>
+    <text x="92" y="214" fill="#9c8f7a" text-anchor="middle" font-size="11">(optional)</text>
+    <rect x="32" y="300" width="120" height="64" rx="8" fill="#201b16" stroke="#c8a15a"/>
+    <text x="92" y="326" fill="#c8a15a" text-anchor="middle" font-weight="700">MIDI in</text>
+    <text x="92" y="344" fill="#9c8f7a" text-anchor="middle" font-size="11">notes · bend · CC64</text>
+    <text x="92" y="358" fill="#9c8f7a" text-anchor="middle" font-size="11">learned CCs</text>
+  </g>
+
+  <!-- stages -->
+  <g font-size="12.5">
+    <rect x="196" y="126" width="140" height="84" rx="8" fill="#201b16" stroke="#3a3128"/>
+    <text x="266" y="150" fill="#c8a15a" text-anchor="middle" font-weight="700">INPUT</text>
+    <text x="266" y="170" fill="#efe6d4" text-anchor="middle">source select</text>
+    <text x="266" y="186" fill="#efe6d4" text-anchor="middle">HP / LP · drive</text>
+    <text x="266" y="202" fill="#efe6d4" text-anchor="middle">pre-delay</text>
+
+    <rect x="380" y="100" width="190" height="136" rx="8" fill="#2a2118" stroke="#c8a15a"/>
+    <text x="475" y="124" fill="#c8a15a" text-anchor="middle" font-weight="700">STRING MATRIX</text>
+    <text x="475" y="146" fill="#efe6d4" text-anchor="middle">64 voices × 48 modal lanes</text>
+    <text x="475" y="164" fill="#efe6d4" text-anchor="middle">unisons · inharmonicity</text>
+    <text x="475" y="182" fill="#efe6d4" text-anchor="middle">double decay · dampers</text>
+    <text x="475" y="200" fill="#efe6d4" text-anchor="middle">halo (bridge coupling)</text>
+    <text x="475" y="220" fill="#9c8f7a" text-anchor="middle" font-size="11">SSE2 / NEON, 4 lanes per op</text>
+
+    <rect x="614" y="126" width="130" height="84" rx="8" fill="#201b16" stroke="#3a3128"/>
+    <text x="679" y="150" fill="#c8a15a" text-anchor="middle" font-weight="700">BODY + BLUR</text>
+    <text x="679" y="170" fill="#efe6d4" text-anchor="middle">soundboard modes</text>
+    <text x="679" y="186" fill="#efe6d4" text-anchor="middle">allpass diffusion</text>
+    <text x="679" y="202" fill="#efe6d4" text-anchor="middle">FDN blur tail</text>
+
+    <rect x="788" y="114" width="180" height="108" rx="8" fill="#201b16" stroke="#3a3128"/>
+    <text x="878" y="138" fill="#c8a15a" text-anchor="middle" font-weight="700">OUTPUT</text>
+    <text x="878" y="158" fill="#efe6d4" text-anchor="middle">wet low cut · tilt</text>
+    <text x="878" y="174" fill="#efe6d4" text-anchor="middle">compressor · ducking</text>
+    <text x="878" y="190" fill="#efe6d4" text-anchor="middle">width · safety clip</text>
+    <text x="878" y="206" fill="#efe6d4" text-anchor="middle">dry / wet · gain</text>
+
+    <rect x="380" y="290" width="190" height="84" rx="8" fill="#201b16" stroke="#c8a15a" stroke-dasharray="4 4"/>
+    <text x="475" y="314" fill="#c8a15a" text-anchor="middle" font-weight="700">STRING HOLDERS</text>
+    <text x="475" y="334" fill="#efe6d4" text-anchor="middle">MIDI · Latch · Scale</text>
+    <text x="475" y="350" fill="#efe6d4" text-anchor="middle">pedal (half-pedal) · freeze</text>
+    <text x="475" y="366" fill="#9c8f7a" text-anchor="middle" font-size="11">decide which dampers are up</text>
+  </g>
+
+  <!-- wires -->
+  <g stroke="#c8a15a" stroke-width="2" fill="none">
+    <path d="M152 134 H196" marker-end="url(#a)"/>
+    <path d="M152 200 H174 V180 H196" marker-end="url(#a)"/>
+    <path d="M336 168 H380" marker-end="url(#a)"/>
+    <path d="M570 168 H614" marker-end="url(#a)"/>
+    <path d="M744 168 H788" marker-end="url(#a)"/>
+    <path d="M968 168 H990" marker-end="url(#a)"/>
+    <path d="M152 332 H380" marker-end="url(#a)"/>
+    <path d="M475 290 V236" marker-end="url(#a)"/>
+    <path d="M92 110 V88 H878 V114" stroke-dasharray="5 5" opacity="0.6" marker-end="url(#a)"/>
+  </g>
+  <rect x="600" y="78" width="248" height="18" fill="#15120f"/>
+  <text x="724" y="91" fill="#9c8f7a" font-size="11.5" text-anchor="middle">dry signal (for the mix and for ducking)</text>
+</svg>

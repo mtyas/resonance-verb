@@ -1,0 +1,139 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Builds Resonance Verb for macOS (universal), Windows and Linux, runs the DSP and plugin
+# test suites, validates the plugins, and publishes a GitHub Release for v* tags.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed only by the release job
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "macOS (universal)", os: macos-14,     package: macOS }
+          - { name: "Windows (x64)",     os: windows-2022, package: Windows }
+          - { name: "Linux (x64)",       os: ubuntu-22.04, package: Linux }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build xvfb libasound2-dev libjack-jackd2-dev libfreetype6-dev \
+            libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libgl1-mesa-dev
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Configure
+        shell: bash
+        run: |
+          GEN=(); [ "$RUNNER_OS" != "Windows" ] && GEN=(-G Ninja)
+          cmake -B build "${GEN[@]}" -DCMAKE_BUILD_TYPE=Release \
+                -DRV_HOMEPAGE="https://github.com/${{ github.repository }}"
+
+      - name: Build plugins and tests
+        run: cmake --build build --config Release --parallel --target ResonanceVerb_All ResonanceVerb_CLAP rv_render rv_plugin_tests
+
+      - name: DSP tests (physics, stability, SIMD, benchmark)
+        shell: bash
+        working-directory: build
+        run: |
+          EXE=$(find . -type f \( -name rv_render -o -name rv_render.exe \) | head -1)
+          "$EXE"
+
+      - name: Plugin tests (undo, presets, MIDI learn, state)
+        shell: bash
+        run: |
+          EXE=$(find build -type f \( -name rv_plugin_tests -o -name rv_plugin_tests.exe \) -path '*artefacts*' | head -1)
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "$EXE"; else "$EXE"; fi
+
+      - name: Validate VST3 with pluginval
+        shell: bash
+        run: |
+          VST3="build/ResonanceVerb_artefacts/Release/VST3/Resonance Verb.vst3"
+          case "$RUNNER_OS" in
+            macOS)   curl -sL -o pv.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
+                     unzip -q pv.zip && PV=pluginval.app/Contents/MacOS/pluginval ;;
+            Windows) curl -sL -o pv.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip
+                     unzip -q pv.zip && PV=./pluginval.exe ;;
+            Linux)   curl -sL -o pv.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Linux.zip
+                     unzip -q pv.zip && PV="xvfb-run -a ./pluginval" ;;
+          esac
+          $PV --strictness-level 10 --validate-in-process --skip-gui-tests --timeout-ms 600000 --validate "$VST3"
+
+      - name: Validate CLAP with clap-validator
+        if: runner.os == 'Linux'
+        run: |
+          curl -sL -o cv.zip https://github.com/free-audio/clap-validator/releases/download/0.4.1/clap-validator-0.4.1-127-g152b982-ubuntu-22.04.zip
+          mkdir cv && unzip -q cv.zip -d cv
+          CV=$(find cv -type f -name clap-validator | head -1); chmod +x "$CV"
+          xvfb-run -a "$CV" validate "build/ResonanceVerb_artefacts/Release/CLAP/Resonance Verb.clap"
+
+      - name: Ad-hoc sign macOS bundles
+        if: runner.os == 'macOS'
+        run: |
+          for b in build/ResonanceVerb_artefacts/Release/{VST3/*.vst3,AU/*.component,CLAP/*.clap,Standalone/*.app}; do
+            codesign --force --deep --sign - "$b"
+          done
+
+      - name: Package
+        shell: bash
+        run: |
+          OUT="ResonanceVerb-${{ matrix.package }}"
+          mkdir -p "$OUT"
+          cp -R build/ResonanceVerb_artefacts/Release/{VST3,CLAP,Standalone} "$OUT"/
+          [ -d build/ResonanceVerb_artefacts/Release/AU ]  && cp -R build/ResonanceVerb_artefacts/Release/AU "$OUT"/
+          [ -d build/ResonanceVerb_artefacts/Release/LV2 ] && cp -R build/ResonanceVerb_artefacts/Release/LV2 "$OUT"/
+          rm -f "$OUT"/*/*.lib "$OUT"/*/*.exp   # Windows import libraries
+          cp LICENSE README.md "$OUT"/
+          cmake -E tar cf "$OUT.zip" --format=zip "$OUT"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            mkdir -p demo && cp build/demo_dry.wav build/demo_noblur.wav build/demo.wav demo/
+            cmake -E tar cf ResonanceVerb-demo-audio.zip --format=zip demo
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ResonanceVerb-${{ matrix.package }}
+          path: |
+            ResonanceVerb-${{ matrix.package }}.zip
+            ResonanceVerb-demo-audio.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip \
+            --title "Resonance Verb ${GITHUB_REF_NAME}" --generate-notes --notes-file - <<'NOTES'
+          Unsigned builds. macOS: after copying the plugins, run
+          `xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/{VST3,Components,CLAP}/Resonance\ Verb.*`
+          once (see the README). Windows may show a SmartScreen prompt.
+          NOTES
