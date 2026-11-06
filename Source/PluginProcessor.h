@@ -7,7 +7,8 @@
 #include "PresetManager.h"
 
 class ResonanceVerbProcessor final : public juce::AudioProcessor,
-                                     private juce::AudioProcessorParameter::Listener
+                                     private juce::AudioProcessorParameter::Listener,
+                                     private juce::AsyncUpdater
 {
 public:
     ResonanceVerbProcessor();
@@ -87,6 +88,7 @@ private:
     void applyValues (const std::vector<float>&);   // no undo recording
 
     void parameterValueChanged (int, float) override {}
+    void handleAsyncUpdate() override;
     void parameterGestureChanged (int parameterIndex, bool gestureIsStarting) override;
 
     rv::ResonanceVerbCore core;
@@ -103,6 +105,14 @@ private:
 
     // presets
     std::unique_ptr<rv::PresetManager> presetManager;
+
+    // Work requested off the message thread (session restore, host program change) and
+    // finished on it via AsyncUpdater, which is cancelled in the destructor. No lambdas are
+    // queued that could outlive the plugin's code (e.g. after the host unloads the library).
+    juce::SpinLock pendingLock;
+    bool pendingRestore = false;
+    juce::String pendingPresetKey;
+    int pendingProgram = -1;
 
     // MIDI learn: CC number -> parameter index (-1 = unmapped). Written by the audio thread
     // when learning, read by both; all atomics, no locks.

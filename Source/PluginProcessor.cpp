@@ -183,6 +183,7 @@ ResonanceVerbProcessor::ResonanceVerbProcessor()
 
 ResonanceVerbProcessor::~ResonanceVerbProcessor()
 {
+    cancelPendingUpdate();
     for (auto* param : parameterList)
         param->removeListener (this);
 }
@@ -263,19 +264,30 @@ void ResonanceVerbProcessor::parameterGestureChanged (int index, bool starting)
         undoManager.perform (new ParamChangeAction (*this, index, from, to));
     };
 
-    if (juce::MessageManager::existsAndIsCurrentThread()) { record(); return; }
-    // Gesture reported off the message thread (some hosts): record it there, if we still exist.
-    const float valueNow = parameterList[index]->getValue();
-    juce::MessageManager::callAsync ([safe = juce::WeakReference<ResonanceVerbProcessor> (this), index, starting, valueNow]
+    // Only gestures on the message thread come from an editor (ours or the host's generic UI);
+    // those reported from other threads are host automation / control surfaces and aren't undo steps.
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        record();
+}
+
+void ResonanceVerbProcessor::handleAsyncUpdate()
+{
+    bool restore;
+    juce::String key;
+    int program;
     {
-        auto* self = safe.get();
-        if (self == nullptr) return;
-        if (starting) { self->gestureStartValues[(size_t) index] = valueNow; return; }
-        const float from = self->gestureStartValues[(size_t) index];
-        if (std::abs (from - valueNow) < 1.0e-7f) return;
-        self->undoManager.beginNewTransaction (self->parameterList[index]->getName (64));
-        self->undoManager.perform (new ParamChangeAction (*self, index, from, valueNow));
-    });
+        const juce::SpinLock::ScopedLockType lock (pendingLock);
+        restore = std::exchange (pendingRestore, false);
+        key = std::exchange (pendingPresetKey, {});
+        program = std::exchange (pendingProgram, -1);
+    }
+    if (restore)
+    {
+        undoManager.clearUndoHistory();              // a restored session starts a fresh history
+        if (key.isNotEmpty()) presetManager->restoreCurrent (key);
+    }
+    if (program >= 0)
+        presetManager->loadFactory (program);
 }
 
 // ---------------------------------------------------------------- MIDI learn
@@ -565,16 +577,13 @@ void ResonanceVerbProcessor::setStateInformation (const void* data, int size)
 
     const auto presetKey = xml->getChildByName ("PRESET") != nullptr
                          ? xml->getChildByName ("PRESET")->getStringAttribute ("key") : juce::String();
-    auto finish = [safe = juce::WeakReference<ResonanceVerbProcessor> (this), presetKey]
     {
-        if (auto* self = safe.get())
-        {
-            self->undoManager.clearUndoHistory();    // a restored session starts a fresh history
-            if (presetKey.isNotEmpty()) self->presetManager->restoreCurrent (presetKey);
-        }
-    };
-    if (juce::MessageManager::existsAndIsCurrentThread()) finish();
-    else juce::MessageManager::callAsync (finish);
+        const juce::SpinLock::ScopedLockType lock (pendingLock);
+        pendingRestore = true;
+        pendingPresetKey = presetKey;
+    }
+    if (juce::MessageManager::existsAndIsCurrentThread()) handleAsyncUpdate();
+    else triggerAsyncUpdate();
 }
 
 // ---------------------------------------------------------------- factory presets as host programs
@@ -594,9 +603,12 @@ const juce::String ResonanceVerbProcessor::getProgramName (int index)
 void ResonanceVerbProcessor::setCurrentProgram (int index)
 {
     if (! juce::isPositiveAndBelow (index, getNumPrograms())) return;
-    if (juce::MessageManager::existsAndIsCurrentThread()) presetManager->loadFactory (index);
-    else juce::MessageManager::callAsync ([safe = juce::WeakReference<ResonanceVerbProcessor> (this), index]
-                                          { if (auto* self = safe.get()) self->presetManager->loadFactory (index); });
+    if (juce::MessageManager::existsAndIsCurrentThread()) { presetManager->loadFactory (index); return; }
+    {
+        const juce::SpinLock::ScopedLockType lock (pendingLock);
+        pendingProgram = index;
+    }
+    triggerAsyncUpdate();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
