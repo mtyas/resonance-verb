@@ -99,6 +99,10 @@ if(RV_BUILD_PLUGIN)
     target_sources(rv_plugin_tests PRIVATE tests/plugin_tests.cpp)
     target_sources(rv_ui_snapshot PRIVATE tests/ui_snapshot.cpp)
 
+    # Minimal CLAP host: randomise parameters via process(), save, reload, compare.
+    add_executable(rv_clap_state_check tests/clap_state_check.cpp)
+    target_link_libraries(rv_clap_state_check PRIVATE clap ${CMAKE_DL_LIBS})
+
     clap_juce_extensions_plugin(TARGET ResonanceVerb
         CLAP_ID "com.matthewtyas.resonanceverb"
         CLAP_FEATURES audio-effect reverb stereo)

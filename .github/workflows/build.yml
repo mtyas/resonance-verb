@@ -49,7 +49,7 @@ jobs:
                 -DRV_HOMEPAGE="https://github.com/${{ github.repository }}"
 
       - name: Build plugins and tests
-        run: cmake --build build --config Release --parallel --target ResonanceVerb_All ResonanceVerb_CLAP rv_render rv_plugin_tests
+        run: cmake --build build --config Release --parallel --target ResonanceVerb_All ResonanceVerb_CLAP rv_render rv_plugin_tests rv_clap_state_check
 
       - name: DSP tests (physics, stability, SIMD, benchmark)
         shell: bash
@@ -77,6 +77,12 @@ jobs:
                      unzip -q pv.zip && PV="xvfb-run -a ./pluginval" ;;
           esac
           $PV --strictness-level 10 --validate-in-process --skip-gui-tests --timeout-ms 600000 --validate "$VST3"
+
+      - name: CLAP state round-trip (own host)
+        shell: bash
+        run: |
+          EXE=$(find build -type f \( -name rv_clap_state_check -o -name rv_clap_state_check.exe \) | head -1)
+          "$EXE" "build/ResonanceVerb_artefacts/Release/CLAP/Resonance Verb.clap"
 
       - name: Validate CLAP with clap-validator
         if: runner.os == 'Linux'
